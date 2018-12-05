@@ -18,7 +18,6 @@ import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
-import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
@@ -36,9 +35,21 @@ public class Aimer implements Runnable {
 	int cycles = 0;
 	
 	Controller controls;
+
+	private double width;
+	private double height;
+	private double centerX;
+	private double centerY;
+	private double distMax;
 	
 	public Aimer(Controller c) {
 		controls = c;
+		
+		width = c.screenRegion().getWidth();
+		height = c.screenRegion().getHeight();
+		centerX = width / 2;
+		centerY = height / 2;
+		distMax = Math.sqrt(Math.pow(centerX, 2) + Math.pow(centerY, 2));
 	}
 	
 	@Override
@@ -114,7 +125,7 @@ public class Aimer implements Runnable {
 
 		Mat im_hsv = new Mat();
 	    Imgproc.cvtColor(im_in, im_hsv, Imgproc.COLOR_RGB2HSV);
-		im_hsv.convertTo(im_hsv, CvType.CV_64FC3);
+		im_hsv.convertTo(im_hsv, CvType.CV_8UC3);
 		
 		List<Mat> channels = new ArrayList<Mat>();
 		Core.split(im_hsv, channels);
@@ -126,35 +137,150 @@ public class Aimer implements Runnable {
 		showResult(val, "val");
 		
 		Mat squares = new Mat();
-		Imgproc.threshold(hue, squares, 95.0, 256.0, Imgproc.THRESH_TOZERO_INV);
-		Imgproc.threshold(squares, squares, 93.0, 256.0, Imgproc.THRESH_BINARY);
+		Imgproc.threshold(hue, squares, 95, 256, Imgproc.THRESH_TOZERO_INV);
+		Imgproc.threshold(squares, squares, 93, 256, Imgproc.THRESH_TOZERO);
 		showResult(squares, "squares");
-
 		
+		Mat labeled_squares = new Mat(squares.size(), CvType.CV_32S);
+		Mat stats_squares = new Mat(squares.size(), CvType.CV_32S);
+		Mat centroids_squares = new Mat(squares.size(), CvType.CV_64F);
+		int count_squares = Imgproc.connectedComponentsWithStats(squares, labeled_squares, stats_squares, centroids_squares, 8);
+		
+		for( int label = 0; label < count_squares; label++ ) {
+			double x = centroids_squares.get(label, 0)[0];
+			double y = centroids_squares.get(label, 1)[0];
+			double area = stats_squares.get(label, Imgproc.CC_STAT_AREA)[0];
+			if( 425 < area && area < 475 ) {
+				System.out.println(String.format("Square at (%1.0f, %1.0f) with area %1.0f",x,y,area));
+			}
+		}
+
 		Mat pentagons = new Mat();
-		Imgproc.threshold(hue, pentagons, 7.0, 256.0, Imgproc.THRESH_TOZERO_INV);
-		Imgproc.threshold(pentagons, pentagons, 1.0, 256.0, Imgproc.THRESH_BINARY);
+		Imgproc.threshold(hue, pentagons, 7, 256, Imgproc.THRESH_TOZERO_INV);
+		Imgproc.threshold(pentagons, pentagons, 1, 256, Imgproc.THRESH_BINARY);
 		showResult(pentagons, "pentagons");
+		
+		Mat labeled_pentagons = new Mat(pentagons.size(), CvType.CV_32S);
+		Mat stats_pentagons = new Mat(pentagons.size(), CvType.CV_32S);
+		Mat centroids_pentagons = new Mat(pentagons.size(), CvType.CV_64F);
+		int count_pentagons = Imgproc.connectedComponentsWithStats(pentagons, labeled_pentagons, stats_pentagons, centroids_pentagons, 8);
+		
+		for( int label = 0; label < count_pentagons; label++ ) {
+			double x = centroids_pentagons.get(label, 0)[0];
+			double y = centroids_pentagons.get(label, 1)[0];
+			double area = stats_pentagons.get(label, Imgproc.CC_STAT_AREA)[0];
+			if( 900 < area && area < 950 ) {
+				System.out.println(String.format("Pentagon at (%1.0f, %1.0f) with area %1.0f",x,y,area));
+			}
+		}
 		
 		Mat otherObjects = new Mat();	// includes triangles, players, and bullets
 		Imgproc.threshold(hue, otherObjects, 100.0, 255, Imgproc.THRESH_BINARY);
 		showResult(otherObjects, "other");
 		
+		Mat labeled_others = new Mat(otherObjects.size(), CvType.CV_32S);
+		Mat stats_others = new Mat(otherObjects.size(), CvType.CV_32S);
+		Mat centroids_others = new Mat(otherObjects.size(), CvType.CV_64F);
+		int count_others = Imgproc.connectedComponentsWithStats(otherObjects, labeled_others, stats_others, centroids_others, 8);
+		
+		for( int label = 0; label < count_others; label++ ) {
+			double x = centroids_others.get(label, 0)[0];
+			double y = centroids_others.get(label, 1)[0];
+			double area = stats_others.get(label, Imgproc.CC_STAT_AREA)[0];
+			if( 600 < area && area < 800 ) {
+				System.out.println(String.format("ENEMY at (%1.0f, %1.0f) with area %1.0f",x,y,area));
+			}
+			if( 300 < area && area < 360 ) {
+				System.out.println(String.format("Triangle at (%1.0f, %1.0f) with area %1.0f",x,y,area));
+			}
+		}
 	}
 	
-	private static LinkedList<Target> processImage(Mat im_in) {
-		
-		int width = im_in.width();
-		int height = im_in.height();
-		int centerX = width / 2;
-		int centerY = height / 2;
-		
-		// put whatever you figure out from that main method here
-		
+	private LinkedList<Target> processImage(Mat im_in) {
 
+		
 		LinkedList<Target> targets = new LinkedList<Target>();
 		targets.add(new Target(centerX, centerY));
+		
+
+		Mat im_hsv = new Mat();
+	    Imgproc.cvtColor(im_in, im_hsv, Imgproc.COLOR_RGB2HSV);
+		im_hsv.convertTo(im_hsv, CvType.CV_8UC3);
+		
+		List<Mat> channels = new ArrayList<Mat>();
+		Core.split(im_hsv, channels);
+		Mat hue = channels.get(0);
+		Mat sat = channels.get(1);
+		Mat val = channels.get(2);
+		
+		Mat squares = new Mat();
+		Imgproc.threshold(hue, squares, 95, 256, Imgproc.THRESH_TOZERO_INV);
+		Imgproc.threshold(squares, squares, 93, 256, Imgproc.THRESH_TOZERO);
+		
+		Mat labeled_squares = new Mat(squares.size(), CvType.CV_32S);
+		Mat stats_squares = new Mat(squares.size(), CvType.CV_32S);
+		Mat centroids_squares = new Mat(squares.size(), CvType.CV_64F);
+		int count_squares = Imgproc.connectedComponentsWithStats(squares, labeled_squares, stats_squares, centroids_squares, 8);
+		
+		for( int label = 0; label < count_squares; label++ ) {
+			double x = centroids_squares.get(label, 0)[0];
+			double y = centroids_squares.get(label, 1)[0];
+			double area = stats_squares.get(label, Imgproc.CC_STAT_AREA)[0];
+			if( 430 < area && area < 480 ) {	// area ~= 455
+//				System.out.println(String.format("Square at (%1.0f, %1.0f) with area %1.0f",x,y,area));
+				targets.add(new Target((int)x,(int)y,calcThreatLevel(x,y,1.0)));
+			}
+		}
+
+		Mat pentagons = new Mat();
+		Imgproc.threshold(hue, pentagons, 7, 256, Imgproc.THRESH_TOZERO_INV);
+		Imgproc.threshold(pentagons, pentagons, 1, 256, Imgproc.THRESH_BINARY);
+		
+		Mat labeled_pentagons = new Mat(pentagons.size(), CvType.CV_32S);
+		Mat stats_pentagons = new Mat(pentagons.size(), CvType.CV_32S);
+		Mat centroids_pentagons = new Mat(pentagons.size(), CvType.CV_64F);
+		int count_pentagons = Imgproc.connectedComponentsWithStats(pentagons, labeled_pentagons, stats_pentagons, centroids_pentagons, 8);
+		
+		for( int label = 0; label < count_pentagons; label++ ) {
+			double x = centroids_pentagons.get(label, 0)[0];
+			double y = centroids_pentagons.get(label, 1)[0];
+			double area = stats_pentagons.get(label, Imgproc.CC_STAT_AREA)[0];
+			if( 900 < area && area < 950 ) {  // area ~= 925
+//				System.out.println(String.format("Pentagon at (%1.0f, %1.0f) with area %1.0f",x,y,area));
+				targets.add(new Target((int)x,(int)y,calcThreatLevel(x,y,10.0)));
+			}
+		}
+		
+		Mat otherObjects = new Mat();	// includes triangles, players, and bullets
+		Imgproc.threshold(hue, otherObjects, 100.0, 255, Imgproc.THRESH_BINARY);
+		
+		Mat labeled_others = new Mat(otherObjects.size(), CvType.CV_32S);
+		Mat stats_others = new Mat(otherObjects.size(), CvType.CV_32S);
+		Mat centroids_others = new Mat(otherObjects.size(), CvType.CV_64F);
+		int count_others = Imgproc.connectedComponentsWithStats(otherObjects, labeled_others, stats_others, centroids_others, 8);
+		
+		for( int label = 0; label < count_others; label++ ) {
+			double x = centroids_others.get(label, 0)[0];
+			double y = centroids_others.get(label, 1)[0];
+			double area = stats_others.get(label, Imgproc.CC_STAT_AREA)[0];
+			if( 600 < area && area < 800 ) { 	// variable in size, but area > 600
+//				System.out.println(String.format("ENEMY at (%1.0f, %1.0f) with area %1.0f",x,y,area));
+				targets.add(new Target((int)x,(int)y,calcThreatLevel(x,y,100.0)));
+			} else if( 300 < area && area < 360 ) {	// area ~=333 
+//				System.out.println(String.format("Triangle at (%1.0f, %1.0f) with area %1.0f",x,y,area));
+				targets.add(new Target((int)x,(int)y,calcThreatLevel(x,y,5.0)));
+			}
+		}
+
 		return targets;
+	}
+	
+	private double calcThreatLevel(double x, double y, double mult) {
+		double a = centerX - x;
+		double b = centerY - y;
+		double dist = Math.sqrt(Math.pow(a, 2) + Math.pow(b, 2));
+		double distFactor = distMax-dist;
+		return mult * distFactor;
 	}
 	
 	private Mat getScreenshot(Robot r) {
