@@ -11,7 +11,7 @@ public class Target {
 		this.y = (int) Math.round(y);
 		this.threatLevel = threatLevel;
 
-		System.out.println(String.format("Target at %d,%d of risk %f", this.x, this.y, this.threatLevel));
+//		System.out.println(String.format("Target at %d,%d of risk %f", this.x, this.y, this.threatLevel));
 	}
 	
 	/**
