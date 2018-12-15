@@ -5,25 +5,25 @@ import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
 
 import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
-import org.opencv.core.DMatch;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
-import org.opencv.core.MatOfDMatch;
-import org.opencv.core.MatOfKeyPoint;
+import org.opencv.core.Point;
+import org.opencv.core.Scalar;
 import org.opencv.core.Size;
-import org.opencv.features2d.BFMatcher;
-import org.opencv.features2d.Features2d;
-import org.opencv.features2d.ORB;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
+
 
 public class Aimer implements Runnable {
 	
@@ -31,50 +31,9 @@ public class Aimer implements Runnable {
 	int cycles = 0;
 	
 	Controller controls;
-
-	private double width;
-	private double height;
-	private double centerX;
-	private double centerY;
-	
-	private int numObjectTypes = 6;
-	private Mat[] imgs = new Mat[numObjectTypes];
-	private MatOfKeyPoint[] kps = new MatOfKeyPoint[numObjectTypes];
-	private Mat[] dess = new Mat[numObjectTypes];
-	private ORB orb;
-	private BFMatcher matcher = BFMatcher.create(BFMatcher.BRUTEFORCE_HAMMING, true);
 	
 	public Aimer(Controller c) {
 		controls = c;
-		
-		// get view window information
-		width = c.screenRegion().getWidth();
-		height = c.screenRegion().getHeight();
-		centerX = width / 2;
-		centerY = height / 2;
-
-		// create keypoints and descriptors for each of the objects to detect
-		orb = ORB.create();
-		orb.setScoreType(ORB.FAST_SCORE);
-		orb.setEdgeThreshold(10);
-		orb.setFastThreshold(4);
-		for( int i = 0; i < numObjectTypes; i++ ) {
-			String imgName;
-			switch(i) {
-				case 0:	imgName = "tank.png";	break;
-				case 1: imgName = "pink_triangle.png";	break;
-				case 2:	imgName = "pentagon.png";	break;
-				case 3: imgName = "red_triangle.png";	break;
-				case 4: imgName = "square.png";	break;
-				default: imgName = "bullet.png";	break;
-			}
-			imgs[i] = Imgcodecs.imread(imgName);
-		    Imgproc.cvtColor(imgs[i], imgs[i], Imgproc.COLOR_RGB2GRAY);
-			
-			kps[i] = new MatOfKeyPoint();
-			dess[i] = new Mat();
-			orb.detectAndCompute(imgs[i], Mat.ones(imgs[i].size(), CvType.CV_8U), kps[i], dess[0]);
-		}
 	}
 	
 	@Override
@@ -84,6 +43,10 @@ public class Aimer implements Runnable {
 			try { Thread.sleep(500); } catch (InterruptedException e) { e.printStackTrace(); System.exit(1); }
 			
 		}
+		
+		// print view window information
+		System.out.println("height" + viewHeight() + ", width " + viewWidth() );
+		
 		// Main loop
 		while( !controls.isClosed() ) {
 			if( !controls.shouldRun() ) {
@@ -92,7 +55,6 @@ public class Aimer implements Runnable {
 				try { Thread.sleep(500); } catch (InterruptedException e) { e.printStackTrace(); System.exit(1); }
 			} else {
 				// Do aiming!
-				try { Thread.sleep(5000); } catch (InterruptedException e) { e.printStackTrace(); System.exit(1); }	// TODO: REMOVE ME, DEBUG ONLY
 				long start = System.currentTimeMillis();
 			
 				Robot robot = null;
@@ -124,41 +86,78 @@ public class Aimer implements Runnable {
 				long end = System.currentTimeMillis();
 				System.out.println("\nduration: " + (end - start));
 				cycles++;
+				
+				//try { Thread.sleep(3000); } catch (InterruptedException e) { e.printStackTrace(); System.exit(1); }	// TODO: REMOVE ME, DEBUG ONLY
+				
 			}
 		}
 		System.exit(0);
 	}
 	
 	private LinkedList<Target> processImage(Mat im_in) {
-
 		LinkedList<Target> targets = new LinkedList<Target>();
 		
-		MatOfKeyPoint cur_kps = new MatOfKeyPoint();
-		Mat cur_des = new Mat();
-		orb.detectAndCompute( im_in, Mat.ones(im_in.size(), CvType.CV_8U), cur_kps, cur_des );
+		Mat im_hsv = new Mat();
+	    Imgproc.cvtColor(im_in, im_hsv, Imgproc.COLOR_RGB2HSV);
+	    im_hsv.convertTo(im_hsv, CvType.CV_8UC3);
+	    
+	    List<Mat> channels = new ArrayList<Mat>();
+ 		Core.split(im_hsv, channels);
+ 		Mat hue = channels.get(0);
+ 		Mat sat = channels.get(1);
+ 		Mat val = channels.get(2);
+	    
+ 		int minRadius = 15;
+ 		int maxRadius = 70;
+ 		Mat targetMask = Mat.zeros(im_in.size(), CvType.CV_8U);	// includes only enemy players
+ 		for( int col = 0; col < im_hsv.width(); col++ ) {
+ 			for( int row = 0; row < im_hsv.height(); row++ ) {
+ 				double sVal = sat.get(row, col)[0];
+ 				double hVal = hue.get(row, col)[0];
+ 				double vVal = val.get(row, col)[0];
+ 				if( 100 < hVal && 165 < sVal && sVal < 175.0 && 150 < vVal ) {
+ 					targetMask.put(row, col, 255.0);
+ 				}
+ 			}
+ 		}
 
-		MatOfDMatch[] matches = new MatOfDMatch[numObjectTypes];
-		for(int i = 0; i < numObjectTypes; i++ ) {
-			matches[i] = new MatOfDMatch();
-			matcher.match(dess[i], cur_des, matches[i]);
-			DMatch[] matchArray = matches[i].toArray();
-			System.out.println(matchArray.length);
-		}
-		
-		Mat im_out = new Mat();
-		Features2d.drawMatches(imgs[2], kps[2], im_in, cur_kps, matches[2], im_out);
-		showResult(im_out, "matches");
-		
-		targets.addLast(new Target(centerX, centerY));
+ 		
+ 		//showResult(targetMask, "mask");
+        
+ 		Mat circles = new Mat();
+ 		Imgproc.HoughCircles(val, circles, Imgproc.CV_HOUGH_GRADIENT, 1, minRadius*2, 20, 50, minRadius, maxRadius);
+ 		
+ 		for (int i = 0; i < circles.cols(); i++) {
+            double[] circleInfo = circles.get(0, i);
+            int x = (int) Math.floor(Math.abs(circleInfo[0]));
+            int y = (int) Math.floor(Math.abs(circleInfo[1]));
+            int radius = (int) Math.round(circleInfo[2]);
+            if( targetMask.get(y, x)[0] > 0 ) {
+            	// WE GOT ONE!
+            	double threatLevel = calcThreatLevel(x,y);
+            	System.out.println("found at " + x+","+y + " with TL: " + threatLevel);
+            	targets.addFirst(new Target(x, y, threatLevel));
+            	
+            	// draw center point of target circle
+                Imgproc.circle(im_in, new Point(x, y), 1, new Scalar(0,0,0), 3, 8, 0 );
+                // draw outline of target circle
+                Imgproc.circle(im_in, new Point(x, y), (int) radius, new Scalar(0,0,0), 3, 8, 0 );
+            }
+            
+        }
+ 		//showResult(im_in, "Found");
+ 		
+		targets.addLast(new Target(centerX(), centerY()));
 		return targets;
 	}
 	
-	private double calcThreatLevel(double x, double y, double base) {
-		double a = centerX - x;
-		double b = centerY - y;
+	
+	private double calcThreatLevel(double x, double y) {
+		double a = centerX() - x;
+		double b = centerY() - y;
 		double dist = Math.sqrt(Math.pow(a, 2) + Math.pow(b, 2));
 		double distFactor = (1/dist);
-		return base + distFactor;
+		return distFactor;
 	}
 	
 	private Mat getScreenshot(Robot r) {
@@ -170,10 +169,26 @@ public class Aimer implements Runnable {
 		Mat img = new Mat(bgrImg.getHeight(), bgrImg.getWidth(), CvType.CV_8UC3);
 		byte[] pixels = ((DataBufferByte) bgrImg.getRaster().getDataBuffer()).getData();
 	    img.put(0, 0, pixels);
-	    Imgproc.cvtColor(img, img, Imgproc.COLOR_RGB2GRAY);
+	    
 	    return img;
 	}
 
+	private double viewWidth() {
+		return controls.screenRegion().getWidth();
+	}
+	
+	private double viewHeight() {
+		return controls.screenRegion().getHeight();
+	}
+	
+	private double centerX() {
+		return viewWidth() / 2;
+	}
+	
+	private double centerY() {
+		return viewHeight() / 2;
+	}
+	
 	public static void showResult(Mat img, String title) {
 	    Imgproc.resize(img, img, new Size(640, 480));
 	    MatOfByte matOfByte = new MatOfByte();
