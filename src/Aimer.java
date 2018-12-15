@@ -27,7 +27,7 @@ import org.opencv.imgproc.Imgproc;
 
 public class Aimer implements Runnable {
 	
-	boolean debug = true;
+	boolean debug = false;
 	int cycles = 0;
 	
 	Controller controls;
@@ -43,9 +43,6 @@ public class Aimer implements Runnable {
 			try { Thread.sleep(500); } catch (InterruptedException e) { e.printStackTrace(); System.exit(1); }
 			
 		}
-		
-		// print view window information
-		System.out.println("height" + viewHeight() + ", width " + viewWidth() );
 		
 		// Main loop
 		while( !controls.isClosed() ) {
@@ -63,7 +60,6 @@ public class Aimer implements Runnable {
 				} catch (AWTException e) { e.printStackTrace(); System.exit(1); }
 				
 				Mat img = getScreenshot(robot);
-				debugSaveImage("01.png", img);
 
 				// Do image processing to find targets
 				LinkedList<Target> targets = processImage(img);
@@ -85,10 +81,10 @@ public class Aimer implements Runnable {
 				
 				long end = System.currentTimeMillis();
 				System.out.println("\nduration: " + (end - start));
+				if( debug ) {
+					try { Thread.sleep(500); } catch (InterruptedException e) { e.printStackTrace(); System.exit(1); }	// TODO: REMOVE ME, DEBUG ONLY
+				}
 				cycles++;
-				
-				//try { Thread.sleep(3000); } catch (InterruptedException e) { e.printStackTrace(); System.exit(1); }	// TODO: REMOVE ME, DEBUG ONLY
-				
 			}
 		}
 		System.exit(0);
@@ -107,50 +103,45 @@ public class Aimer implements Runnable {
  		Mat sat = channels.get(1);
  		Mat val = channels.get(2);
 	    
- 		int minRadius = 15;
- 		int maxRadius = 70;
- 		Mat targetMask = Mat.zeros(im_in.size(), CvType.CV_8U);	// includes only enemy players
- 		for( int col = 0; col < im_hsv.width(); col++ ) {
- 			for( int row = 0; row < im_hsv.height(); row++ ) {
- 				double sVal = sat.get(row, col)[0];
- 				double hVal = hue.get(row, col)[0];
- 				double vVal = val.get(row, col)[0];
- 				if( 100 < hVal && 165 < sVal && sVal < 175.0 && 150 < vVal ) {
- 					targetMask.put(row, col, 255.0);
- 				}
- 			}
- 		}
-
- 		
- 		//showResult(targetMask, "mask");
-        
+ 		int minRadius = 20;
+ 		int maxRadius = 100;
+ 		        
  		Mat circles = new Mat();
- 		Imgproc.HoughCircles(val, circles, Imgproc.CV_HOUGH_GRADIENT, 1, minRadius*2, 20, 50, minRadius, maxRadius);
+ 		Imgproc.HoughCircles(val, circles, Imgproc.CV_HOUGH_GRADIENT, 1, minRadius*2, 80, 30, minRadius, maxRadius);
  		
  		for (int i = 0; i < circles.cols(); i++) {
             double[] circleInfo = circles.get(0, i);
             int x = (int) Math.floor(Math.abs(circleInfo[0]));
             int y = (int) Math.floor(Math.abs(circleInfo[1]));
-            int radius = (int) Math.round(circleInfo[2]);
-            if( targetMask.get(y, x)[0] > 0 ) {
+            if( isTarget(hue, sat, val, x, y) ) {
             	// WE GOT ONE!
             	double threatLevel = calcThreatLevel(x,y);
             	System.out.println("found at " + x+","+y + " with TL: " + threatLevel);
             	targets.addFirst(new Target(x, y, threatLevel));
             	
-            	// draw center point of target circle
-                Imgproc.circle(im_in, new Point(x, y), 1, new Scalar(0,0,0), 3, 8, 0 );
-                // draw outline of target circle
-                Imgproc.circle(im_in, new Point(x, y), (int) radius, new Scalar(0,0,0), 3, 8, 0 );
+            	if( debug ) {
+            		// draw center point of target circle
+            		Imgproc.circle(im_in, new Point(x, y), 1, new Scalar(0,0,0), 3, 8, 0 );
+                	// draw outline of target circle
+                    int radius = (int) Math.round(circleInfo[2]);
+                	Imgproc.circle(im_in, new Point(x, y), (int) radius, new Scalar(0,0,0), 3, 8, 0 );
+            	}
             }
             
         }
- 		//showResult(im_in, "Found");
- 		
+ 		if( debug && !targets.isEmpty() ) {
+ 			showResult(im_in, "Found");
+ 		}
 		targets.addLast(new Target(centerX(), centerY()));
 		return targets;
 	}
 	
+	private boolean isTarget( Mat h, Mat s, Mat v, int x, int y ) {
+		double sVal = s.get(y, x)[0];
+		double hVal = h.get(y, x)[0];
+		double vVal = v.get(y, x)[0];
+		return ( 100 < hVal && 165 < sVal && sVal < 175.0 && 150 < vVal );
+	}
 	
 	private double calcThreatLevel(double x, double y) {
 		double a = centerX() - x;
@@ -190,7 +181,7 @@ public class Aimer implements Runnable {
 	}
 	
 	public static void showResult(Mat img, String title) {
-	    Imgproc.resize(img, img, new Size(640, 480));
+	    Imgproc.resize(img, img, new Size(img.width()*0.75, img.height()*0.75));
 	    MatOfByte matOfByte = new MatOfByte();
 	    Imgcodecs.imencode(".jpg", img, matOfByte);
 	    byte[] byteArray = matOfByte.toArray();
@@ -202,6 +193,7 @@ public class Aimer implements Runnable {
 	        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 	        frame.getContentPane().add(new JLabel(new ImageIcon(bufImage)));
 	        frame.pack();
+	        frame.setAutoRequestFocus(false);
 	        frame.setVisible(true);
 	    } catch (Exception e) {
 	        e.printStackTrace();

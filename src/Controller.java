@@ -68,38 +68,38 @@ public class Controller implements WindowListener, ActionListener {
 	@Override
 	public void windowActivated(WindowEvent arg0) {
 		paused = true;
-		System.out.print("activated ");
+		//System.out.print("activated ");
 	}
 
 	@Override
 	public void windowClosed(WindowEvent arg0) {
-		System.out.print("closed ");
+		//System.out.print("closed ");
 	}
 
 	@Override
 	public void windowClosing(WindowEvent arg0) {
 		closed = true;
-		System.out.print("closing ");
+		//System.out.print("closing ");
 	}
 
 	@Override
 	public void windowDeactivated(WindowEvent arg0) {
 		paused = false;
-		System.out.println("deactivated ");
+		//System.out.println("deactivated ");
 	}
 
 	@Override
 	public void windowDeiconified(WindowEvent arg0) {
-		System.out.print("deiconified ");
+		//System.out.print("deiconified ");
 	}
 
 	@Override
 	public void windowIconified(WindowEvent arg0) {
-		System.out.print("iconified ");
+		//System.out.print("iconified ");
 	}
 
 	@Override
 	public void windowOpened(WindowEvent arg0) {
-		System.out.print("opened ");
+		//System.out.print("opened ");
 	}
 }
