@@ -56,8 +56,8 @@ public class Aimer implements Runnable {
 		// create keypoints and descriptors for each of the objects to detect
 		orb = ORB.create();
 		orb.setScoreType(ORB.FAST_SCORE);
-		orb.setEdgeThreshold(9);
-		orb.setFastThreshold(1);
+		orb.setEdgeThreshold(10);
+		orb.setFastThreshold(4);
 		for( int i = 0; i < numObjectTypes; i++ ) {
 			String imgName;
 			switch(i) {
@@ -146,7 +146,7 @@ public class Aimer implements Runnable {
 		}
 		
 		Mat im_out = new Mat();
-		Features2d.drawMatches(imgs[3], kps[3], im_in, cur_kps, matches[3], im_out);
+		Features2d.drawMatches(imgs[2], kps[2], im_in, cur_kps, matches[2], im_out);
 		showResult(im_out, "matches");
 		
 		targets.addLast(new Target(centerX, centerY));
